@@ -1,69 +1,70 @@
 const express = require('express');
-const cors = require('cors');
 const axios = require('axios');
+const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
-const publicDir = path.join(__dirname, 'public');
-if (!fs.existsSync(publicDir)) {
-    fs.mkdirSync(publicDir, { recursive: true });
-}
-app.use(express.static(publicDir));
+// Ping Route for Uptime
+app.get('/ping', (req, res) => res.status(200).send('OK'));
 
-const VALID_DOMAINS = [
-    'terabox', '1024tera', 'terasharelink', 
-    'nephobox', 'momerybox', 'tibibox', 'freeterabox'
-];
-
+// Extract API with Fallback Mechanism
 app.post('/api/extract', async (req, res) => {
     const { url } = req.body;
 
-    if (!url || typeof url !== 'string') {
-        return res.status(400).json({ success: false, message: 'অনুগ্রহ করে একটি লিংক প্রদান করুন।' });
+    if (!url) {
+        return res.status(400).json({ success: false, message: 'TeraBox লিংক প্রদান করুন।' });
     }
 
-    const isValidTeraBox = VALID_DOMAINS.some(domain => url.toLowerCase().includes(domain)) && url.includes('/s/');
-
-    if (!isValidTeraBox) {
-        return res.status(400).json({ 
-            success: false, 
-            message: 'দয়া করে একটি সঠিক TeraBox বা সংশ্লিষ্ট শেয়ার লিংক প্রদান করুন।' 
-        });
-    }
-
+    // Primary API
     try {
-        const targetApi = `https://terabox-dl.qt0.workers.dev/api/get-info?shorturl=${encodeURIComponent(url)}`;
-        
-        const response = await axios.get(targetApi, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            },
-            timeout: 15000
+        const response = await axios.get(`https://terabox-dl.qt0.workers.dev/api?url=${encodeURIComponent(url)}`, {
+            timeout: 8000
         });
 
-        if (response.data && response.data.downloadUrl) {
+        if (response.data && (response.data.stream_url || response.data.download_url || response.data.url)) {
             return res.json({
                 success: true,
-                title: response.data.fileName || 'TeraBox_Video.mp4',
-                size: response.data.fileSize || 'N/A',
-                stream_url: response.data.downloadUrl,
-                download_url: response.data.downloadUrl
+                title: response.data.title || response.data.file_name || 'TeraBox Video',
+                stream_url: response.data.stream_url || response.data.url || response.data.download_url,
+                download_url: response.data.download_url || response.data.url || response.data.stream_url,
+                thumbnail: response.data.thumbnail || ''
             });
-        } else {
-            return res.status(400).json({ success: false, message: 'লিংক থেকে ভিডিও ডেটা এক্সট্র্যাক্ট করা যায়নি।' });
         }
-
-    } catch (error) {
-        return res.status(500).json({ success: false, message: 'সার্ভার প্রসেসিং ত্রুটি। কিছুক্ষণ পর আবার চেষ্টা করুন।' });
+    } catch (primaryError) {
+        console.log('Primary API failed, trying fallback API...');
     }
+
+    // Fallback API 1
+    try {
+        const fallbackResponse = await axios.get(`https://terabox-videodownloader.vercel.app/api/proxy?url=${encodeURIComponent(url)}`, {
+            timeout: 8000
+        });
+
+        if (fallbackResponse.data && fallbackResponse.data.direct_link) {
+            return res.json({
+                success: true,
+                title: fallbackResponse.data.file_name || 'TeraBox Video',
+                stream_url: fallbackResponse.data.direct_link,
+                download_url: fallbackResponse.data.direct_link,
+                thumbnail: fallbackResponse.data.thumb || ''
+            });
+        }
+    } catch (fallbackError) {
+        console.log('Fallback API failed...');
+    }
+
+    return res.status(500).json({
+        success: false,
+        message: 'সার্ভার প্রসেসিং ত্রুটি। API সার্ভিসটি ডাউন রয়েছে, অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।'
+    });
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
