@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeraBox Stream & Download Web App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-lg bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700">
+        <h1 class="text-2xl font-bold text-center text-indigo-400 mb-6">⚡ TeraBox Player & Extractor</h1>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm text-slate-300 mb-2">TeraBox Link দিন:</label>
+                <input type="text" id="teraboxUrl" placeholder="https://terasharelink.com/s/..." 
+                    class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
+            </div>
+            
+            <button onclick="processLink()" id="submitBtn" 
+                class="w-full bg-indigo-600 hover:bg-indigo-700 font-semibold py-3 rounded-xl transition duration-200">
+                প্রসেস করুন
+            </button>
+        </div>
+
+        <p id="errorMsg" class="text-red-400 text-sm mt-4 text-center hidden"></p>
+
+        <!-- Result Box (Bot Style Buttons) -->
+        <div id="resultContainer" class="mt-6 bg-slate-900 p-4 rounded-xl border border-slate-700 hidden">
+            <h2 id="videoTitle" class="font-bold text-indigo-300 text-sm truncate mb-1"></h2>
+            <p id="fileSize" class="text-xs text-slate-400 mb-4"></p>
+
+            <div class="space-y-3">
+                <button onclick="showPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-700 font-medium py-2.5 rounded-lg text-sm transition">
+                    🎬 Watch Online (Stream)
+                </button>
+                <a id="downloadBtn" href="#" target="_blank" 
+                    class="block text-center w-full bg-sky-600 hover:bg-sky-700 font-medium py-2.5 rounded-lg text-sm transition">
+                    📥 Direct Download
+                </a>
+            </div>
+        </div>
+
+        <!-- Video Player Container -->
+        <div id="playerContainer" class="mt-6 hidden">
+            <video id="videoPlayer" class="video-js vjs-big-play-centered w-full h-64 rounded-lg" controls preload="auto">
+                <source id="videoSource" src="" type="video/mp4">
+            </video>
+        </div>
+    </div>
+
+    <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+    <script>
+        let player;
+        let streamUrlGlobal = '';
+
+        async function processLink() {
+            const urlInput = document.getElementById('teraboxUrl').value.trim();
+            const submitBtn = document.getElementById('submitBtn');
+            const errorMsg = document.getElementById('errorMsg');
+            const resultContainer = document.getElementById('resultContainer');
+            const playerContainer = document.getElementById('playerContainer');
+
+            errorMsg.classList.add('hidden');
+            resultContainer.classList.add('hidden');
+            playerContainer.classList.add('hidden');
+
+            if (!urlInput) {
+                errorMsg.innerText = "দয়া করে একটি লিংক দিন।";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerText = "প্রসেস হচ্ছে...";
+
+            try {
+                const response = await fetch('/api/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: urlInput })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    document.getElementById('videoTitle').innerText = `📁 ${data.title}`;
+                    document.getElementById('fileSize').innerText = `সাইজ: ${data.size}`;
+                    document.getElementById('downloadBtn').href = data.download_url;
+                    
+                    streamUrlGlobal = data.stream_url;
+                    resultContainer.classList.remove('hidden');
+                } else {
+                    errorMsg.innerText = data.message || "লিংক প্রসেস করতে ব্যর্থ হয়েছে।";
+                    errorMsg.classList.remove('hidden');
+                }
+            } catch (err) {
+                errorMsg.innerText = "নেটওয়ার্ক ত্রুটি ঘটেছে।";
+                errorMsg.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerText = "প্রসেস করুন";
+            }
+        }
+
+        function showPlayer() {
+            const playerContainer = document.getElementById('playerContainer');
+            playerContainer.classList.remove('hidden');
+
+            if (!player) {
+                player = videojs('videoPlayer');
+            }
+            player.src({ type: 'video/mp4', src: streamUrlGlobal });
+            player.load();
+            player.play();
+        }
+    </script>
+</body>
+</html>
